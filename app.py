@@ -559,17 +559,29 @@ class MainFrame(wx.Frame):
                 qa_files.append(qa_file)
 
             # 步骤 4：合并子文档
-            dlg.append_log("【步骤 4/4】合并 QA Pairs 子文档...")
-            dlg.set_progress(92, "合并文件...")
+            dlg.append_log("【步骤 4/5】合并 QA Pairs 子文档...")
+            dlg.set_progress(90, "合并文件...")
             merged_file = os.path.join(output_dir, "qa_pairs.md")
             with open(merged_file, "w", encoding="utf-8") as out_f:
                 for qa_file in qa_files:
                     with open(qa_file, "r", encoding="utf-8") as in_f:
                         out_f.write(in_f.read())
                     out_f.write("\n\n")
+            dlg.append_log("  ✓ 已合并到：qa_pairs.md")
 
-            dlg.append_log(f"  ✓ 已合并到：qa_pairs.md")
+            # 步骤 5：Markdown → DOCX
             if not cancelled:
+                dlg.append_log("【步骤 5/5】将 qa_pairs.md 转换为 DOCX（含图片）...")
+                dlg.set_progress(94, "转换 Markdown→DOCX...")
+                docx_output = os.path.join(output_dir, "qa_pairs.docx")
+                from paser import markdown_to_docx
+                with open(merged_file, "r", encoding="utf-8") as f:
+                    merged_content = f.read()
+                docx_bytes = markdown_to_docx(merged_content, image_dir=output_dir)
+                with open(docx_output, "wb") as f:
+                    f.write(docx_bytes)
+                dlg.append_log("  ✓ 已输出：qa_pairs.docx")
+                dlg.set_progress(100, "全部完成！")
                 dlg.append_log(f"\n🎉 全部完成！共生成 {total} 个块的 QA Pairs。")
                 success = True
 
