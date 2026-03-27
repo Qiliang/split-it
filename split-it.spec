@@ -1,12 +1,11 @@
 # -*- mode: python ; coding: utf-8 -*-
 import sys
-from pathlib import Path
 
 block_cipher = None
 
 a = Analysis(
     ["app.py"],
-    pathex=[str(Path(__file__).parent)],
+    pathex=[SPECPATH],
     binaries=[],
     datas=[
         ("split-it.ico", "."),
