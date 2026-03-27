@@ -35,6 +35,17 @@ APP_DIR = get_app_dir()
 PROMPT_FILE = str(APP_DIR / "QAprompt.txt")
 MARKDOWN_DOC_DIR = str(APP_DIR / "markdown_doc")
 
+
+def _ensure_prompt_file() -> None:
+    """若 QAprompt.txt 不存在，则用内置默认提示词初始化。"""
+    if not os.path.exists(PROMPT_FILE):
+        from QAprompt import default_prompt
+        with open(PROMPT_FILE, "w", encoding="utf-8") as f:
+            f.write(default_prompt)
+
+
+_ensure_prompt_file()
+
 # ── API Key 加密存储 ──────────────────────────────────────────────────────────
 
 _CONFIG_DIR = Path.home() / ".split-it"
