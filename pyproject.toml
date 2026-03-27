@@ -1,0 +1,20 @@
+[project]
+name = "split-it"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "cryptography>=44.0.0",
+    "mammoth>=1.9.0",
+    "markdownify>=1.1.0",
+    "markitdown[all]>=0.1.5",
+    "openai>=2.30.0",
+    "tqdm>=4.67.3",
+    "wxpython>=4.2.5",
+]
+
+[tool.uv]
+dev-dependencies = [
+    "pyinstaller>=6.11",
+]

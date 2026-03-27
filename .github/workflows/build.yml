@@ -1,0 +1,127 @@
+name: Build & Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  # ── macOS ARM64 (Apple Silicon) ─────────────────────────────────────────────
+  build-macos-arm64:
+    name: Build macOS ARM64
+    runs-on: macos-14   # M1/M2 runner（arm64）
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install uv
+        run: pip install uv
+
+      - name: Install dependencies
+        run: uv sync --all-extras
+
+      - name: Install PyInstaller
+        run: uv pip install pyinstaller
+
+      - name: Build with PyInstaller
+        run: uv run pyinstaller split-it.spec --noconfirm
+
+      - name: Package .app as zip
+        run: |
+          cd dist
+          zip -r ../split-it-macos-arm64.zip Split-It.app
+          cd ..
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: split-it-macos-arm64
+          path: split-it-macos-arm64.zip
+
+  # ── Windows x86_64 ──────────────────────────────────────────────────────────
+  build-windows-x64:
+    name: Build Windows x64
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install uv
+        run: pip install uv
+
+      - name: Install dependencies
+        run: uv sync --all-extras
+
+      - name: Install PyInstaller
+        run: uv pip install pyinstaller
+
+      - name: Build with PyInstaller
+        run: uv run pyinstaller split-it.spec --noconfirm
+
+      - name: Package dist folder as zip
+        shell: pwsh
+        run: |
+          Compress-Archive -Path dist\split-it\* -DestinationPath split-it-windows-x64.zip
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: split-it-windows-x64
+          path: split-it-windows-x64.zip
+
+  # ── 发布到 GitHub Release ────────────────────────────────────────────────────
+  release:
+    name: Publish Release
+    needs: [build-macos-arm64, build-windows-x64]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download macOS artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: split-it-macos-arm64
+          path: artifacts/
+
+      - name: Download Windows artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: split-it-windows-x64
+          path: artifacts/
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "Split-It ${{ github.ref_name }}"
+          body: |
+            ## Split-It ${{ github.ref_name }}
+
+            ### 下载
+
+            | 平台 | 文件 |
+            |------|------|
+            | macOS ARM64 (Apple Silicon) | `split-it-macos-arm64.zip` |
+            | Windows x64 | `split-it-windows-x64.zip` |
+
+            ### 使用说明
+            - **macOS**：解压后将 `Split-It.app` 拖入应用程序文件夹，首次运行需在「系统设置 → 隐私与安全性」中允许运行。
+            - **Windows**：解压后运行 `split-it.exe`。
+          files: |
+            artifacts/split-it-macos-arm64.zip
+            artifacts/split-it-windows-x64.zip
+          draft: false
+          prerelease: false
