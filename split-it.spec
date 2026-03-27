@@ -87,7 +87,7 @@ if sys.platform == "darwin":
     app = BUNDLE(
         coll,
         name="Split-It.app",
-        icon="split-it.ico",
+        icon="split-it.icns",
         bundle_identifier="com.splitit.app",
         info_plist={
             "CFBundleShortVersionString": "1.0.0",
