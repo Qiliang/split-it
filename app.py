@@ -387,6 +387,7 @@ class MainFrame(wx.Frame):
         settings_sizer.Add(self.overwrite_cb, 0, wx.ALL, 4)
 
         self.skip_toc_cb = wx.CheckBox(panel, label="跳过目录（AI 自动定位正文起始位置）")
+        self.skip_toc_cb.SetValue(True)
         settings_sizer.Add(self.skip_toc_cb, 0, wx.ALL, 4)
 
         mid_hbox.Add(settings_sizer, 1, wx.EXPAND)
