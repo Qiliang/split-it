@@ -55,6 +55,9 @@ _KEY_FILE = _CONFIG_DIR / ".fernet_key"
 _DEFAULT_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
 _DEFAULT_MODEL = "qwen-plus"
 
+# 「跳过目录」功能：发送给 AI 用于定位正文起始位置的最大字符数
+SKIP_TOC_PREVIEW_CHARS = 15000
+
 
 def _get_fernet_key() -> bytes:
     """获取或生成持久化 Fernet 密钥（首次运行时随机生成并写入磁盘）。"""
@@ -587,8 +590,7 @@ class MainFrame(wx.Frame):
                 dlg.append_log("  [跳过目录] 正在调用 AI 定位正文起始位置...")
                 from QAprompt import text_begin_prompt
                 import json_repair
-                # 取文档前 6000 字符足以覆盖目录区域
-                preview = md_content[:6000]
+                preview = md_content[:SKIP_TOC_PREVIEW_CHARS]
                 begin_prompt = text_begin_prompt.replace("$DOC_CONTENT$", preview)
                 begin_completion = llm_client.chat.completions.create(
                     model=model,
