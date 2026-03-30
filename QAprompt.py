@@ -15,7 +15,7 @@ Guidelines:
 
 完整覆盖：QA Pairs需要完整覆盖文档中的所有知识点，不能遗漏。可以包含大标题大问题和子标题小问题。
 
-注意：回答中需要包含图片链接，如果有的话，需要使用![](图片链接) 格式。图片路径为[_images/image_xxx.png]。
+注意：回答中需要包含图片链接，如果有的话，需要使用![](图片链接) 格式。图片路径为[_images/image_xx.png]。
 
 格式要求： 请统一使用 Markdown 列表输出，格式如下：
 
@@ -23,6 +23,20 @@ Guidelines:
 - Q: [在这里输入问题]
   A: [在这里输入详尽、准确的回答]
 ```
+
+Input Document: 
+```markdown
+$DOC_CONTENT$
+```
+"""
+
+
+text_begin_prompt = """
+下面文档中，跳过目录，正文从哪里开始, 需要定位到唯一的标识。
+输出格式：{
+    start_text: '',
+    find_regex: '',
+}
 
 Input Document: 
 ```markdown

@@ -292,12 +292,12 @@ class ProgressDialog(wx.Dialog):
 
 class MainFrame(wx.Frame):
     def __init__(self):
-        super().__init__(None, title="Split-It 文档拆分工具", size=(800, 270))
+        super().__init__(None, title="Split-It 文档拆分工具", size=(800, 360))
         self._set_icon()
         self._init_ui()
         self.Centre()
-        self.SetMinSize((800, 270))
-        self.SetMaxSize((800, 270))
+        self.SetMinSize((800, 360))
+        self.SetMaxSize((800, 360))
 
     def _set_icon(self):
         icon_path = get_resource_path("split-it.ico")
@@ -335,14 +335,43 @@ class MainFrame(wx.Frame):
         settings_box = wx.StaticBox(panel, label="设置")
         settings_sizer = wx.StaticBoxSizer(settings_box, wx.VERTICAL)
 
-        depth_hbox = wx.BoxSizer(wx.HORIZONTAL)
-        depth_hbox.Add(
+        # ── 切分策略 ───────────────────────────────────────────────
+        strategy_hbox = wx.BoxSizer(wx.HORIZONTAL)
+        strategy_hbox.Add(
+            wx.StaticText(panel, label="切分策略："),
+            0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 4,
+        )
+        self.strategy_choice = wx.Choice(panel, choices=["按标题层级切分", "按文本长度切分"])
+        self.strategy_choice.SetSelection(1)
+        strategy_hbox.Add(self.strategy_choice, 0)
+        settings_sizer.Add(strategy_hbox, 0, wx.ALL, 4)
+
+        # ── 按标题层级参数 ─────────────────────────────────────────
+        self.depth_hbox = wx.BoxSizer(wx.HORIZONTAL)
+        self.depth_hbox.Add(
             wx.StaticText(panel, label="拆分深度（级）："),
             0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 4,
         )
-        self.depth_spin = wx.SpinCtrl(panel, value="3", min=1, max=6, size=(65, -1))
-        depth_hbox.Add(self.depth_spin, 0)
-        settings_sizer.Add(depth_hbox, 0, wx.ALL, 4)
+        self.depth_spin = wx.SpinCtrl(panel, value="3", min=1, max=4, size=(65, -1))
+        self.depth_hbox.Add(self.depth_spin, 0)
+        settings_sizer.Add(self.depth_hbox, 0, wx.ALL, 4)
+
+        # ── 按文本长度参数 ─────────────────────────────────────────
+        self.chunk_hbox = wx.BoxSizer(wx.HORIZONTAL)
+        self.chunk_hbox.Add(
+            wx.StaticText(panel, label="块大小（字符）："),
+            0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 4,
+        )
+        self.chunk_size_spin = wx.SpinCtrl(panel, value="1000", min=500, max=4000, size=(80, -1))
+        self.chunk_hbox.Add(self.chunk_size_spin, 0, wx.RIGHT, 8)
+        self.chunk_hbox.Add(
+            wx.StaticText(panel, label="重叠（字符）："),
+            0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 4,
+        )
+        self.chunk_overlap_spin = wx.SpinCtrl(panel, value="100", min=0, max=500, size=(80, -1))
+        self.chunk_hbox.Add(self.chunk_overlap_spin, 0)
+        settings_sizer.Add(self.chunk_hbox, 0, wx.ALL, 4)
+        settings_sizer.Show(self.depth_hbox, False)
 
         test_hbox = wx.BoxSizer(wx.HORIZONTAL)
         self.test_mode_cb = wx.CheckBox(panel, label="测试模式，只处理前")
@@ -353,9 +382,12 @@ class MainFrame(wx.Frame):
         test_hbox.Add(wx.StaticText(panel, label="个块"), 0, wx.ALIGN_CENTER_VERTICAL)
         settings_sizer.Add(test_hbox, 0, wx.ALL, 4)
 
-        self.overwrite_cb = wx.CheckBox(panel, label="覆盖已存在的 qa_pairs_xx.md")
+        self.overwrite_cb = wx.CheckBox(panel, label="覆盖上次结果")
         self.overwrite_cb.SetValue(True)
         settings_sizer.Add(self.overwrite_cb, 0, wx.ALL, 4)
+
+        self.skip_toc_cb = wx.CheckBox(panel, label="跳过目录（AI 自动定位正文起始位置）")
+        settings_sizer.Add(self.skip_toc_cb, 0, wx.ALL, 4)
 
         mid_hbox.Add(settings_sizer, 1, wx.EXPAND)
         main_vbox.Add(mid_hbox, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 8)
@@ -372,11 +404,23 @@ class MainFrame(wx.Frame):
         self.api_btn.Bind(wx.EVT_BUTTON, self.on_api_settings)
         open_btn.Bind(wx.EVT_BUTTON, self.on_open_folder)
         self.test_mode_cb.Bind(wx.EVT_CHECKBOX, self._on_test_mode_toggle)
+        self.strategy_choice.Bind(wx.EVT_CHOICE, self._on_strategy_change)
 
     # ── 事件 ──────────────────────────────────────────────────────
 
     def _on_test_mode_toggle(self, event):
         self.test_n_spin.Enable(self.test_mode_cb.IsChecked())
+
+    def _on_strategy_change(self, event):
+        is_level = self.strategy_choice.GetSelection() == 0
+        self.depth_hbox.ShowItems(is_level)
+        self.chunk_hbox.ShowItems(not is_level)
+        self.GetSizer().Layout() if self.GetSizer() else None
+        # 找到 panel 的 sizer 重新布局
+        for child in self.GetChildren():
+            if isinstance(child, wx.Panel):
+                child.Layout()
+                break
 
     def on_browse(self, event):
         with wx.FileDialog(
@@ -458,18 +502,22 @@ class MainFrame(wx.Frame):
                 self.on_set_prompt(None)
             return
 
+        split_strategy = "level" if self.strategy_choice.GetSelection() == 0 else "text"
         depth = self.depth_spin.GetValue()
+        chunk_size = self.chunk_size_spin.GetValue()
+        chunk_overlap = self.chunk_overlap_spin.GetValue()
         test_mode = self.test_mode_cb.IsChecked()
         test_n = self.test_n_spin.GetValue() if test_mode else None
         overwrite = self.overwrite_cb.IsChecked()
+        skip_toc = self.skip_toc_cb.IsChecked()
 
         self.split_btn.Enable(False)
         progress_dlg = ProgressDialog(self)
 
         threading.Thread(
             target=self._do_split_thread,
-            args=(docx_path, depth, test_n, overwrite, api_cfg,
-                  progress_dlg, progress_dlg.stop_event),
+            args=(docx_path, split_strategy, depth, chunk_size, chunk_overlap,
+                  test_n, overwrite, skip_toc, api_cfg, progress_dlg, progress_dlg.stop_event),
             daemon=True,
         ).start()
 
@@ -482,9 +530,13 @@ class MainFrame(wx.Frame):
     def _do_split_thread(
         self,
         docx_path: str,
+        split_strategy: str,
         depth: int,
+        chunk_size: int,
+        chunk_overlap: int,
         test_n: int | None,
         overwrite: bool,
+        skip_toc: bool,
         api_cfg: dict,
         dlg: ProgressDialog,
         stop_event: threading.Event,
@@ -493,10 +545,13 @@ class MainFrame(wx.Frame):
         cancelled = False
         try:
             from main import docx_to_markdown
-            from paser import markdown_split_by_level
+            from paser import markdown_split_by_level, markdown_split_by_text
             import openai
 
             output_dir = MARKDOWN_DOC_DIR
+            if overwrite and os.path.exists(output_dir):
+                dlg.append_log("【预处理】清空 markdown_doc 目录...")
+                shutil.rmtree(output_dir)
             os.makedirs(output_dir, exist_ok=True)
 
             # 步骤 1：复制原文件
@@ -520,7 +575,57 @@ class MainFrame(wx.Frame):
             dlg.append_log("【步骤 3/4】提取 QA Pairs（调用 LLM）...")
             with open(output_md, "r", encoding="utf-8") as f:
                 md_content = f.read()
-            blocks = markdown_split_by_level(md_content, depth=depth)
+
+            llm_client = openai.OpenAI(
+                api_key=api_cfg["api_key"],
+                base_url=api_cfg.get("base_url", _DEFAULT_BASE_URL),
+            )
+            model = api_cfg.get("model", _DEFAULT_MODEL)
+
+            if skip_toc:
+                dlg.append_log("  [跳过目录] 正在调用 AI 定位正文起始位置...")
+                from QAprompt import text_begin_prompt
+                import json_repair
+                # 取文档前 6000 字符足以覆盖目录区域
+                preview = md_content[:6000]
+                begin_prompt = text_begin_prompt.replace("$DOC_CONTENT$", preview)
+                begin_completion = llm_client.chat.completions.create(
+                    model=model,
+                    messages=[{"role": "user", "content": begin_prompt}],
+                )
+                begin_response = begin_completion.choices[0].message.content
+                # 提取 JSON 块并用 json-repair 容错解析
+                json_match = re.search(r'\{.*\}', begin_response, re.DOTALL)
+                if json_match:
+                    begin_info = json_repair.loads(json_match.group())
+                    find_regex = (begin_info.get("find_regex") or "").strip()
+                    start_text = (begin_info.get("start_text") or "").strip()
+                    located = False
+                    if find_regex:
+                        try:
+                            m = re.search(find_regex, md_content)
+                            if m:
+                                md_content = md_content[m.start():]
+                                dlg.append_log(f"  ✓ 正则匹配成功，正文从位置 {m.start()} 开始")
+                                located = True
+                        except re.error as e:
+                            dlg.append_log(f"  ⚠ 正则无效（{e}），改用 start_text 定位")
+                    if not located and start_text:
+                        pos = md_content.find(start_text)
+                        if pos >= 0:
+                            md_content = md_content[pos:]
+                            dlg.append_log(f"  ✓ 文本定位成功，正文从位置 {pos} 开始（'{start_text[:40]}'）")
+                        else:
+                            dlg.append_log(f"  ⚠ 未找到 start_text，将使用完整文档")
+                else:
+                    dlg.append_log("  ⚠ AI 响应中未找到有效 JSON，将使用完整文档")
+
+            if split_strategy == "level":
+                dlg.append_log(f"  切分策略：按标题层级（depth={depth}）")
+                blocks = markdown_split_by_level(md_content, depth=depth)
+            else:
+                dlg.append_log(f"  切分策略：按文本长度（chunk_size={chunk_size}, overlap={chunk_overlap}）")
+                blocks = markdown_split_by_text(md_content, chunk_size=chunk_size, chunk_overlap=chunk_overlap)
 
             with open(PROMPT_FILE, "r", encoding="utf-8") as f:
                 prompt_template = f.read()
@@ -532,15 +637,9 @@ class MainFrame(wx.Frame):
             total = len(blocks)
             dlg.append_log(f"  共 {total} 个块需要处理")
 
-            llm_client = openai.OpenAI(
-                api_key=api_cfg["api_key"],
-                base_url=api_cfg.get("base_url", _DEFAULT_BASE_URL),
-            )
-            model = api_cfg.get("model", _DEFAULT_MODEL)
-
             qa_files: list[str] = []
             for i, block in enumerate(blocks):
-                first_line = block.to_markdown().split("\n")[0][:60]
+                first_line = block.split("\n")[0][:60]
                 qa_file = os.path.join(output_dir, f"qa_pairs_{i}.md")
                 dlg.set_progress(25 + int((i + 1) / total * 65), f"处理第 {i+1}/{total} 个块...")
                 print(f"qa_file: {qa_file}, overwrite: {overwrite}")
@@ -557,8 +656,9 @@ class MainFrame(wx.Frame):
                 dlg.append_log(f"  [{i + 1}/{total}] {first_line}...")
 
                 prompt = prompt_template.replace(
-                    "$DOC_CONTENT$", block.to_markdown(include_parent=True)
+                    "$DOC_CONTENT$", block
                 )
+                print(prompt)
                 completion = llm_client.chat.completions.create(
                     model=model,
                     messages=[{"role": "user", "content": prompt}],

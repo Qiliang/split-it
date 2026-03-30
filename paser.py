@@ -6,38 +6,14 @@ import zipfile
 from dataclasses import dataclass
 from typing import Optional
 from xml.sax.saxutils import escape as _xml_escape
-
-
-@dataclass
-class MarkdownBlock:
-    level: int
-    title: str
-    content: str
-    parent: Optional['MarkdownBlock'] = None
-
-
-    def to_markdown(self, include_parent: bool = False) -> str:
-        parts: list[str] = []
-        if include_parent:
-            ancestors: list['MarkdownBlock'] = []
-            node = self.parent
-            while node:
-                ancestors.append(node)
-                node = node.parent
-            for anc in reversed(ancestors):
-                parts.append(f"{'#' * anc.level} {anc.title}")
-                if anc.content:
-                    parts.append(anc.content)
-        parts.append(f"{'#' * self.level} {self.title}")
-        if self.content:
-            parts.append(self.content)
-        return '\n\n'.join(parts)
+from langchain_core.documents.base import Document
+from langchain_text_splitters import MarkdownTextSplitter,MarkdownHeaderTextSplitter
 
 
 _HEADING_RE = re.compile(r'^(#{1,6})\s+(.*)')
 
 
-def markdown_split_by_level(markdown_text: str, depth=3) -> list['MarkdownBlock']:
+def markdown_split_by_level(markdown_text: str, depth=3) -> list[str]:
     """
     基于markdown的标题层级,将文档切分成多个子文档
     depth=4 那么，最顶层标题为1级标题，以下标题为2级标题，以此类推，直到depth级标题。
@@ -46,49 +22,28 @@ def markdown_split_by_level(markdown_text: str, depth=3) -> list['MarkdownBlock'
         返回depth的MarkdownBlock。
         例如文档中有20个depth为4的标题，那么返回20个MarkdownBlock(parent中包含的MarkdownBlock为depth-1的标题,parent为depth-2的标题，以此类推)。
     """
-    lines = markdown_text.split('\n')
-
-    sections: list[tuple[int, int, str]] = []
-    for i, line in enumerate(lines):
-        m = _HEADING_RE.match(line)
-        if m and len(m.group(1)) <= depth:
-            sections.append((i, len(m.group(1)), m.group(2).strip()))
-
-    ancestors: dict[int, MarkdownBlock] = {}
-    result: list[MarkdownBlock] = []
-
-    for idx, (line_no, level, title) in enumerate(sections):
-        content_start = line_no + 1
-        content_end = sections[idx + 1][0] if idx + 1 < len(sections) else len(lines)
-        content = '\n'.join(lines[content_start:content_end]).strip()
-
-        parent = None
-        for lv in range(level - 1, 0, -1):
-            if lv in ancestors:
-                parent = ancestors[lv]
-                break
-
-        block = MarkdownBlock(level=level, title=title, content=content, parent=parent)
-
-        ancestors[level] = block
-        for lv in list(ancestors):
-            if lv > level:
-                del ancestors[lv]
-
-        if level == depth:
-            result.append(block)
-
-    return result
+    if depth == 1:
+        splitter = MarkdownHeaderTextSplitter(headers_to_split_on=[("#","标题")])
+    elif depth == 2:
+        splitter = MarkdownHeaderTextSplitter(headers_to_split_on=[("#","一级标题"),("##","二级标题")])
+    elif depth == 3:
+        splitter = MarkdownHeaderTextSplitter(headers_to_split_on=[("#","一级标题"),("##","二级标题"),("###","三级标题")])
+    elif depth == 4:
+        splitter = MarkdownHeaderTextSplitter(headers_to_split_on=[("#","一级标题"),("##","二级标题"),("###","三级标题"),("####","四级标题")])
+    else:
+        raise ValueError(f"depth must be in [1,2,3,4], but got {depth}")
+    blocks = splitter.split_text(markdown_text)
+    return [str(block) for block in blocks if len(block.metadata.keys()) == depth]
 
 
-if __name__ == "__main__":
-    with open("markdown_doc/output.md", "r", encoding="utf-8") as f:
-        md_text = f.read()
-    blocks = markdown_split_by_level(md_text, depth=3)
-    # print(blocks)
-    for block in blocks:
-        print(block.to_markdown())
-        print("-"*100)
+def markdown_split_by_text(markdown_text: str, chunk_size=1000, chunk_overlap=100) -> list[str]:
+    """
+    基于markdown的文本，将文档切分成多个子文档
+    return:
+        返回MarkdownBlock。
+    """
+    splitter = MarkdownTextSplitter(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
+    return splitter.split_text(markdown_text)
 
 
 # ── DOCX 常量 ────────────────────────────────────────────────────────────────
@@ -392,3 +347,17 @@ def markdown_to_docx(markdown_text: str, image_dir: str = '.') -> bytes:
             zf.writestr(f'word/media/{media_name}', data)
 
     return buf.getvalue()
+
+
+
+
+if __name__ == "__main__":
+    with open("markdown_doc/_output.md", "r", encoding="utf-8") as f:
+        md_text = f.read()
+    # blocks = markdown_split_by_level(md_text, depth=3)
+    blocks = markdown_split_by_text(md_text, chunk_size=1000, chunk_overlap=200)
+    # print(blocks)
+    for block in blocks:
+        print(block)
+        # print(block.to_markdown())
+        print("-"*100)
